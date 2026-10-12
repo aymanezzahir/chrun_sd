@@ -11,7 +11,7 @@ import streamlit as st
 from sklearn.metrics import confusion_matrix, precision_recall_curve, roc_curve
 
 from utils import (STRETCH, compute_metrics, feature_columns, feature_effects,
-                   final_estimator, load_csv, load_model, predict_scores, require)
+                   final_estimator, load_csv, load_model, predict_scores, require, to_binary)
 
 st.set_page_config(page_title="Model Performance", page_icon="📈", layout="wide")
 st.title("📈 Model Performance")
@@ -20,7 +20,7 @@ model = require(load_model(), "`model/model.pkl` not found.")
 test = require(load_csv("test.csv"), "`data/test.csv` not found.")
 columns = require(feature_columns(), "`data/train.csv` not found (needed for the feature list).")
 
-X, y = test[columns], test["Churn"].astype(int)
+X, y = test[columns], pd.Series(to_binary(test["Churn"]))
 pred, score, is_proba = predict_scores(model, X)
 m = compute_metrics(y, pred, score)
 

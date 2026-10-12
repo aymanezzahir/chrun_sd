@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 MODEL_PATH = ROOT / "model" / "model.pkl"
 
-# `use_container_width` was replaced by `width="stretch"` in newer Streamlit versions
+
 _ver = tuple(int(x) for x in st.__version__.split(".")[:2])
 STRETCH = {"width": "stretch"} if _ver >= (1, 50) else {"use_container_width": True}
 
@@ -23,16 +23,13 @@ def require(obj, message):
     return obj
 
 
-# ----------------------------------------------------------------------
-# Loading
-# ----------------------------------------------------------------------
 @st.cache_data
 def load_csv(name):
     p = DATA_DIR / name
     if not p.exists():
         return None
     df = pd.read_csv(p)
-    # drop the saved row index ('Unnamed: 0'): it leaks the label in train.csv
+   
     return df.drop(columns=df.columns[df.columns.str.startswith("Unnamed")])
 
 
@@ -65,16 +62,22 @@ def feature_columns():
     return None if train is None else [c for c in train.columns if c != "Churn"]
 
 
-# ----------------------------------------------------------------------
-# Scoring
-# ----------------------------------------------------------------------
+# scrore
 def final_estimator(model):
     return model.steps[-1][1] if hasattr(model, "steps") else model
 
 
+def to_binary(labels):
+    """Convert labels to 0/1. Accepts 0/1, True/False or text such as 'Yes'/'No'."""
+    arr = np.asarray(labels).ravel()
+    if arr.dtype.kind in "OUS":
+        return np.isin(np.char.lower(arr.astype(str)), ["yes", "1", "true", "churn"]).astype(int)
+    return arr.astype(int)
+
+
 def predict_scores(model, X):
     """Returns (class predictions, continuous scores, scores_are_probabilities)."""
-    pred = np.asarray(model.predict(X)).ravel().astype(int)
+    pred = to_binary(model.predict(X))
     if hasattr(model, "predict_proba"):
         return pred, model.predict_proba(X)[:, 1], True
     if hasattr(model, "decision_function"):
@@ -108,16 +111,14 @@ def feature_effects(model, columns):
     return pd.DataFrame({"Feature": columns, kind: vals}), kind
 
 
-# ----------------------------------------------------------------------
-# Encoding raw form inputs -> model features (one-hot, drop_first=True)
-# ----------------------------------------------------------------------
+
 def encode(inputs, columns):
     """Turn raw inputs, e.g. {'Contract': 'One year', 'tenure': 5, ...}, into one model row."""
     row = {}
     for c in columns:
-        if c in inputs:                       # numeric / binary columns (tenure, SeniorCitizen...)
+        if c in inputs:                       #
             row[c] = inputs[c]
-        else:                                 # one-hot column such as 'Contract_One year'
+        else:                                 
             base, value = c.split("_", 1)
             row[c] = int(inputs[base] == value)
     return pd.DataFrame([row])[columns]

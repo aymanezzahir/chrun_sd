@@ -68,9 +68,7 @@ inputs = {
 }
 
 
-# ----------------------------------------------------------------------
-# Scoring
-# ----------------------------------------------------------------------
+
 def risk_of(customer):
     """Churn risk in [0, 1] plus the model's class prediction."""
     pred, score, is_proba = predict_scores(model, encode(customer, columns))
@@ -95,9 +93,7 @@ except Exception as e:
 
 label = "Churn probability" if is_proba else "Risk score"
 
-# ----------------------------------------------------------------------
-# Result
-# ----------------------------------------------------------------------
+
 st.divider()
 left, right = st.columns([1, 1])
 

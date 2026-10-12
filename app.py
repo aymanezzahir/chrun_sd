@@ -3,19 +3,15 @@ import plotly.express as px
 import streamlit as st
 
 from utils import (STRETCH, compute_metrics, feature_columns, feature_effects,
-                   final_estimator, load_csv, load_model, load_raw, predict_scores)
+                   final_estimator, load_csv, load_model, load_raw, predict_scores, to_binary)
 
-# ----------------------------------------------------------------------
-# CONFIG – edit these to personalise the page
-# ----------------------------------------------------------------------
-YOUR_NAME = "Your Name"
+
+YOUR_NAME = "Ezzahir Ayman"
 TAGLINE = "Data Scientist · Machine Learning · Analytics"
 GITHUB_URL = "https://github.com/your-username"
 LINKEDIN_URL = "https://www.linkedin.com/in/your-username"
 REPO_URL = "https://github.com/your-username/churn-prediction"
 
-# Results from your notebook (test set: 1,409 customers, 374 churners).
-# "—" = not recorded. Add the other models' numbers from your results table.
 BENCHMARK = pd.DataFrame(
     [
         {"Model": "Linear SVC (best F1)", "Accuracy": "—", "Precision": "—", "Recall": "0.663", "F1": "0.618", "ROC-AUC": "0.834"},
@@ -56,9 +52,7 @@ train = load_csv("train.csv")
 test = load_csv("test.csv")
 model = load_model()
 
-# ----------------------------------------------------------------------
-# Sidebar
-# ----------------------------------------------------------------------
+# sidebar
 with st.sidebar:
     st.success("Select a page above 👆")
     st.markdown("### About me")
@@ -67,9 +61,7 @@ with st.sidebar:
     st.link_button("LinkedIn", LINKEDIN_URL, **STRETCH)
     st.link_button("Project repository", REPO_URL, **STRETCH)
 
-# ----------------------------------------------------------------------
-# Hero + KPIs
-# ----------------------------------------------------------------------
+# hero section
 st.markdown(
     """
     <div class="hero">
@@ -93,9 +85,7 @@ else:
 
 st.divider()
 
-# ----------------------------------------------------------------------
-# Navigation
-# ----------------------------------------------------------------------
+# nav
 st.subheader("🧭 Explore the project")
 n1, n2, n3 = st.columns(3)
 with n1:
@@ -116,11 +106,10 @@ with n3:
 
 st.divider()
 
-# ----------------------------------------------------------------------
+
 # Tabs
-# ----------------------------------------------------------------------
 tab_problem, tab_insights, tab_pipeline, tab_results = st.tabs(
-    ["🎯 Problem", "🔍 Key insights", "⚙️ Pipeline", "🏆 Results"]
+    ["Problem", "Key insights", "Pipeline", "Results"]
 )
 
 with tab_problem:
@@ -195,12 +184,12 @@ with tab_insights:
 
 with tab_pipeline:
     steps = [
-        ("1️⃣ Data cleaning", "Fixed `TotalCharges` type, handled missing values, dropped `customerID`."),
-        ("2️⃣ Encoding", "One-hot encoded categorical features; kept numeric features."),
-        ("3️⃣ Balancing", "Oversampled the minority class in training to fix the 73/27 imbalance."),
-        ("4️⃣ Modelling", "Compared 20 scikit-learn classifiers on the same held-out test set."),
-        ("5️⃣ Evaluation", "Judged by churn-class recall, F1 and ROC-AUC, not accuracy alone."),
-        ("6️⃣ Deployment", "Saved the winner as `model.pkl` and served it with Streamlit."),
+        ("1- Data cleaning", "Fixed `TotalCharges` type, handled missing values, dropped `customerID`."),
+        ("2- Encoding", "One-hot encoded categorical features; kept numeric features."),
+        ("3- Balancing", "Oversampled the minority class in training to fix the 73/27 imbalance."),
+        ("4- Modelling", "Compared 20 scikit-learn classifiers on the same held-out test set."),
+        ("5- Evaluation", "Judged by churn-class recall, F1 and ROC-AUC, not accuracy alone."),
+        ("6- Deployment", "Saved the winner as `model.pkl` and served it with Streamlit."),
     ]
     cols = st.columns(3)
     for i, (title, desc) in enumerate(steps):
@@ -215,7 +204,7 @@ with tab_results:
     live = None
     if model is not None and test is not None:
         try:
-            X, y = test[feature_columns()], test["Churn"].astype(int)
+            X, y = test[feature_columns()], pd.Series(to_binary(test["Churn"]))
             pred, score, _ = predict_scores(model, X)
             live = compute_metrics(y, pred, score)
             live["cm"] = pd.crosstab(y, pred).reindex(index=[0, 1], columns=[0, 1], fill_value=0).values
