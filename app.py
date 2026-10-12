@@ -1,10 +1,9 @@
-from pathlib import Path
-import pickle
-
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from utils import (STRETCH, compute_metrics, feature_columns, feature_effects,
+                   final_estimator, load_csv, load_model, load_raw, predict_scores)
 
 # ----------------------------------------------------------------------
 # CONFIG – edit these to personalise the page
@@ -25,18 +24,8 @@ BENCHMARK = pd.DataFrame(
     ]
 )
 
-# Folders searched for the data files and model.pkl
-SEARCH_DIRS = [".", "data", "../data", "models", "../models"]
-
-# `use_container_width` was replaced by `width="stretch"` in newer Streamlit versions
-_ver = tuple(int(x) for x in st.__version__.split(".")[:2])
-STRETCH = {"width": "stretch"} if _ver >= (1, 50) else {"use_container_width": True}
-
 st.set_page_config(page_title="Customer Churn Prediction", page_icon="📉", layout="wide")
 
-# ----------------------------------------------------------------------
-# Styling
-# ----------------------------------------------------------------------
 st.markdown(
     """
     <style>
@@ -62,105 +51,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# ----------------------------------------------------------------------
-# Helpers
-# ----------------------------------------------------------------------
-def find_file(name):
-    base = Path(__file__).parent
-    for d in SEARCH_DIRS:
-        p = (base / d / name).resolve()
-        if p.exists():
-            return p
-    return None
-
-
-@st.cache_data
-def load_raw():
-    p = find_file("raw_data.csv")
-    if p is None:
-        return None
-    df = pd.read_csv(p)
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
-    return df
-
-
-@st.cache_data
-def load_train_shape():
-    p = find_file("train.csv")
-    return pd.read_csv(p).shape if p else None
-
-
-@st.cache_resource
-def load_model():
-    p = find_file("model.pkl")
-    if p is None:
-        return None
-    try:
-        import joblib
-        return joblib.load(p)
-    except Exception:
-        with open(p, "rb") as f:
-            return pickle.load(f)
-
-
-@st.cache_data
-def load_test():
-    p = find_file("test.csv")
-    if p is None:
-        return None
-    df = pd.read_csv(p)
-    return df.drop(columns=df.columns[df.columns.str.startswith("Unnamed")])
-
-
-def final_estimator(model):
-    return model.steps[-1][1] if hasattr(model, "steps") else model
-
-
-def live_evaluation(model, test):
-    """Score model.pkl on test.csv. Returns None if anything doesn't line up."""
-    from sklearn.metrics import (accuracy_score, confusion_matrix, f1_score,
-                                 precision_score, recall_score, roc_auc_score)
-    try:
-        X, y = test.drop(columns=["Churn"]), test["Churn"]
-        pred = model.predict(X)
-        if hasattr(model, "predict_proba"):
-            score = model.predict_proba(X)[:, 1]
-        elif hasattr(model, "decision_function"):
-            score = model.decision_function(X)
-        else:
-            score = None
-        return {
-            "Accuracy": accuracy_score(y, pred),
-            "Precision": precision_score(y, pred, zero_division=0),
-            "Recall": recall_score(y, pred),
-            "F1": f1_score(y, pred),
-            "ROC-AUC": roc_auc_score(y, score) if score is not None else None,
-            "cm": confusion_matrix(y, pred),
-            "columns": list(X.columns),
-        }
-    except Exception:
-        return None
-
-
-def feature_effects(model, columns):
-    """Importance (trees) or coefficients (linear models), as a DataFrame."""
-    est = final_estimator(model)
-    if hasattr(est, "feature_importances_"):
-        vals, kind = est.feature_importances_, "Importance"
-    elif hasattr(est, "coef_"):
-        vals, kind = np.ravel(est.coef_), "Coefficient (+ raises churn risk)"
-    else:
-        return None, None
-    if len(vals) != len(columns):
-        return None, None
-    return pd.DataFrame({"Feature": columns, kind: vals}), kind
-
-
 raw = load_raw()
-train_shape = load_train_shape()
+train = load_csv("train.csv")
+test = load_csv("test.csv")
 model = load_model()
-test = load_test()
 
 # ----------------------------------------------------------------------
 # Sidebar
@@ -195,25 +89,30 @@ if raw is not None:
     c3.metric("Avg. monthly charge", f"${raw['MonthlyCharges'].mean():,.2f}")
     c4.metric("Avg. tenure", f"{raw['tenure'].mean():.0f} months")
 else:
-    st.warning("`raw_data.csv` not found – add it next to `app.py` (or in `data/`) to see live stats.")
+    st.warning("`data/raw_data.csv` not found.")
 
 st.divider()
 
 # ----------------------------------------------------------------------
-# Navigation cards (uncomment page_link once the page files exist)
+# Navigation
 # ----------------------------------------------------------------------
 st.subheader("🧭 Explore the project")
 n1, n2, n3 = st.columns(3)
-cards = [
-    (n1, "📊 Data Exploration", "Interactive EDA: distributions, churn drivers and correlations."),
-    (n2, "🤖 Predict Churn", "Enter a customer profile and get a churn probability from the model."),
-    (n3, "📈 Model Performance", "Metrics, confusion matrix and feature effects."),
-]
-for col, title, desc in cards:
-    col.markdown(f'<div class="card"><h4>{title}</h4>{desc}</div>', unsafe_allow_html=True)
-# st.page_link("pages/1_Data_Exploration.py", label="Open Data Exploration", icon="📊")
-# st.page_link("pages/2_Prediction.py", label="Open Prediction", icon="🤖")
-# st.page_link("pages/3_Model_Performance.py", label="Open Model Performance", icon="📈")
+with n1:
+    st.markdown('<div class="card"><h4>📊 Data Exploration</h4>'
+                "Filter customers and explore churn drivers, distributions and correlations.</div>",
+                unsafe_allow_html=True)
+    st.page_link("pages/1_Data_Exploration.py", label="Open Data Exploration", icon="📊")
+with n2:
+    st.markdown('<div class="card"><h4>🤖 Predict Churn</h4>'
+                "Enter a customer profile, get a churn risk and test retention what-ifs.</div>",
+                unsafe_allow_html=True)
+    st.page_link("pages/2_Prediction.py", label="Open Prediction", icon="🤖")
+with n3:
+    st.markdown('<div class="card"><h4>📈 Model Performance</h4>'
+                "Metrics, ROC curve, confusion matrix and an interactive threshold explorer.</div>",
+                unsafe_allow_html=True)
+    st.page_link("pages/3_Model_Performance.py", label="Open Model Performance", icon="📈")
 
 st.divider()
 
@@ -248,8 +147,8 @@ with tab_problem:
         if raw is not None:
             st.markdown("#### Data at a glance")
             st.write(f"**Raw dataset:** {raw.shape[0]:,} rows × {raw.shape[1]} columns")
-            if train_shape:
-                st.write(f"**Preprocessed training set:** {train_shape[0]:,} rows × {train_shape[1]} columns")
+            if train is not None:
+                st.write(f"**Preprocessed training set:** {train.shape[0]:,} rows × {train.shape[1]} columns")
             st.write(
                 "Raw data is imbalanced (~27% churn). The training set was oversampled to "
                 "50/50; the test set keeps the real distribution so scores are realistic."
@@ -313,32 +212,37 @@ with tab_pipeline:
     st.markdown("".join(f'<span class="pill">{s}</span>' for s in stack), unsafe_allow_html=True)
 
 with tab_results:
-    live = live_evaluation(model, test) if (model is not None and test is not None) else None
+    live = None
+    if model is not None and test is not None:
+        try:
+            X, y = test[feature_columns()], test["Churn"].astype(int)
+            pred, score, _ = predict_scores(model, X)
+            live = compute_metrics(y, pred, score)
+            live["cm"] = pd.crosstab(y, pred).reindex(index=[0, 1], columns=[0, 1], fill_value=0).values
+        except Exception as e:
+            st.warning(f"Could not score model.pkl on test.csv: {e}")
 
     if live:
-        name = type(final_estimator(model)).__name__
-        st.markdown(f"#### Final model: `{name}` — scored live on the test set")
+        st.markdown(f"#### Final model: `{type(final_estimator(model)).__name__}` — scored live on the test set")
         cols = st.columns(5)
         for col, k in zip(cols, ["Accuracy", "Precision", "Recall", "F1", "ROC-AUC"]):
             v = live[k]
             col.metric(k if k in ("Accuracy", "ROC-AUC") else f"{k} (churn)", "—" if v is None else f"{v:.3f}")
 
         left, right = st.columns(2)
-        cm = live["cm"]
-        fig_cm = px.imshow(cm, text_auto=True, color_continuous_scale="Purples",
+        fig_cm = px.imshow(live["cm"], text_auto=True, color_continuous_scale="Purples",
                            x=["Predicted: stay", "Predicted: churn"],
                            y=["Actual: stay", "Actual: churn"], title="Confusion matrix")
         fig_cm.update_coloraxes(showscale=False)
         left.plotly_chart(fig_cm, **STRETCH)
 
-        eff, kind = feature_effects(model, live["columns"])
+        eff, kind = feature_effects(model, feature_columns())
         if eff is not None:
             eff = eff.reindex(eff[kind].abs().sort_values(ascending=False).index).head(10).iloc[::-1]
-            fig_f = px.bar(eff, x=kind, y="Feature", orientation="h", title="Top 10 features")
-            right.plotly_chart(fig_f, **STRETCH)
+            right.plotly_chart(px.bar(eff, x=kind, y="Feature", orientation="h", title="Top 10 features"), **STRETCH)
     else:
         st.markdown("#### Final model results")
-        st.caption("Add `model.pkl` and `test.csv` next to `app.py` (or in `data/`) to score the model live here.")
+        st.caption("Add `model/model.pkl` and `data/test.csv` to score the model live here.")
 
     st.markdown("#### Model comparison (from my notebook)")
     st.dataframe(BENCHMARK, hide_index=True, **STRETCH)
@@ -356,10 +260,8 @@ with tab_results:
               SHAP for per-customer explanations.
             """
         )
-    st.info(
-        "💡 **Business impact:** rank customers by churn risk and focus the retention budget "
-        "on the highest-risk, highest-value segments."
-    )
+    st.info("💡 **Business impact:** rank customers by churn risk and focus the retention budget "
+            "on the highest-risk, highest-value segments.")
 
 st.divider()
 st.caption(f"Built by {YOUR_NAME} · Streamlit · Open to data science opportunities")
